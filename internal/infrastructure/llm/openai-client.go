@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/openai/openai-go"
@@ -34,27 +36,28 @@ type ProjectEvaluationResult struct {
 
 // EvaluateCV evaluates a candidate's CV against job requirements
 func (c *OpenAIClient) EvaluateCV(cvText, jobContext string) (*CVEvaluationResult, error) {
-	prompt := fmt.Sprintf(`You are an expert technical recruiter evaluating a candidate's CV for a Backend Engineer position.
+	prompt := fmt.Sprintf(`You are an expert technical recruiter. Analyze this candidate's CV for a Backend Engineer role and respond with specific, personalized feedback.
 
-Job Requirements and Context:
+JOB REQUIREMENTS:
 %s
 
-Candidate's CV:
+CANDIDATE CV TEXT:
 %s
 
-Evaluate this CV and provide:
-1. match_rate: A score from 0.0 to 1.0 representing how well the candidate matches the job requirements
-2. feedback: Detailed feedback (3-5 sentences) covering:
-   - Technical skills match
-   - Experience level
-   - Relevant achievements
-   - Areas for improvement
+TASK: Evaluate the candidate and respond ONLY with valid JSON containing:
+1. "match_rate": decimal between 0.0-1.0 
+2. "feedback": specific evaluation of THIS candidate (3-5 sentences)
 
-Return ONLY a valid JSON object with this exact structure:
-{
-  "match_rate": 0.85,
-  "feedback": "Your detailed feedback here..."
-}`, jobContext, cvText)
+Your feedback must address:
+- How their technical skills match the job requirements
+- Their experience level and relevance  
+- Notable achievements from their background
+- Specific areas they should improve
+
+Example response format (replace with actual analysis):
+{"match_rate": 0.75, "feedback": "This candidate shows strong backend experience with Go and Python. Their machine learning background aligns well with modern backend requirements. However, they lack enterprise-scale system design experience. Their academic projects demonstrate solid coding fundamentals but need more production experience."}
+
+CRITICAL: Write actual specific feedback about THIS candidate, not generic placeholder text.`, jobContext, cvText)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -78,10 +81,18 @@ Return ONLY a valid JSON object with this exact structure:
 	}
 
 	content := resp.Choices[0].Message.Content
+	log.Printf("🔍 OpenAI CV Response: %s", content)
 
 	var result CVEvaluationResult
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
 		return nil, fmt.Errorf("failed to parse OpenAI response: %w, content: %s", err, content)
+	}
+
+	// Check for placeholder text that suggests the model didn't follow instructions
+	if strings.Contains(result.Feedback, "Your detailed feedback here") ||
+	   strings.Contains(result.Feedback, "Provide your actual") ||
+	   strings.Contains(result.Feedback, "placeholder") {
+		return nil, fmt.Errorf("OpenAI returned placeholder text instead of actual feedback. Content: %s", content)
 	}
 
 	// Validate match_rate range
@@ -105,19 +116,19 @@ Case Study Requirements and Rubric:
 Candidate's Project Report:
 %s
 
-Evaluate this project and provide:
-1. score: A score from 1.0 to 5.0 based on the rubric
-2. feedback: Detailed feedback (4-6 sentences) covering:
-   - Correctness (prompt design, LLM chaining, RAG)
-   - Code quality and structure
-   - Resilience and error handling
-   - Documentation quality
+Analyze this project thoroughly against the provided rubric and requirements.
 
-Return ONLY a valid JSON object with this exact structure:
+Required output format - ONLY JSON:
 {
-  "score": 4.5,
-  "feedback": "Your detailed feedback here..."
-}`, caseStudyContext, reportText)
+  "score": [number from 1.0 to 5.0],
+  "feedback": "[Write 4-6 sentences covering: correctness of implementation, code quality assessment, error handling evaluation, and documentation review]"
+}
+
+IMPORTANT:
+- Replace ALL placeholder text with actual project analysis
+- The feedback must be specific to this project submission
+- Score based strictly on the rubric criteria
+- Do not use generic or template language`, caseStudyContext, reportText)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

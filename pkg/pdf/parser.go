@@ -3,6 +3,7 @@ package pdf
 import (
 	"bytes"
 	"fmt"
+	"os/exec"
 	"strings"
 
 	"github.com/ledongthuc/pdf"
@@ -14,47 +15,67 @@ func NewParser() *Parser {
 	return &Parser{}
 }
 
-// ExtractText extracts text content from a PDF file
 func (p *Parser) ExtractText(filePath string) (string, error) {
-	// Open PDF file
+	// Try method 1: ledongthuc/pdf library
+	text, err := p.extractWithLedong(filePath)
+	if err == nil && len(strings.TrimSpace(text)) > 0 {
+		return text, nil
+	}
+
+	// Try method 2: pdftotext (if available)
+	text, err = p.extractWithPdfToText(filePath)
+	if err == nil && len(strings.TrimSpace(text)) > 0 {
+		return text, nil
+	}
+
+	// If both methods fail
+	return "", fmt.Errorf("no text content found in PDF")
+}
+
+func (p *Parser) extractWithLedong(filePath string) (string, error) {
 	f, r, err := pdf.Open(filePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open PDF: %w", err)
 	}
 	defer f.Close()
 
-	// Get total pages
 	totalPages := r.NumPage()
-
 	var textBuilder strings.Builder
 
-	// Extract text from each page
 	for pageIndex := 1; pageIndex <= totalPages; pageIndex++ {
-		p := r.Page(pageIndex)
-		if p.V.IsNull() {
+		page := r.Page(pageIndex)
+		if page.V.IsNull() {
 			continue
 		}
 
-		text, err := p.GetPlainText(nil)
+		text, err := page.GetPlainText(nil)
 		if err != nil {
-			return "", fmt.Errorf("failed to extract text from page %d: %w", pageIndex, err)
+			continue // Skip failed pages
 		}
 
 		textBuilder.WriteString(text)
 		textBuilder.WriteString("\n")
 	}
 
-	extractedText := textBuilder.String()
-
-	// Validate extracted text
-	if len(strings.TrimSpace(extractedText)) == 0 {
-		return "", fmt.Errorf("no text content found in PDF")
-	}
-
-	return extractedText, nil
+	return textBuilder.String(), nil
 }
 
-// ExtractTextFromBytes extracts text from PDF bytes
+func (p *Parser) extractWithPdfToText(filePath string) (string, error) {
+	// Check if pdftotext is available
+	if _, err := exec.LookPath("pdftotext"); err != nil {
+		return "", fmt.Errorf("pdftotext not available: %w", err)
+	}
+
+	// Run pdftotext command
+	cmd := exec.Command("pdftotext", filePath, "-")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("pdftotext failed: %w", err)
+	}
+
+	return string(output), nil
+}
+
 func (p *Parser) ExtractTextFromBytes(data []byte) (string, error) {
 	r, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
@@ -65,12 +86,12 @@ func (p *Parser) ExtractTextFromBytes(data []byte) (string, error) {
 	var textBuilder strings.Builder
 
 	for pageIndex := 1; pageIndex <= totalPages; pageIndex++ {
-		p := r.Page(pageIndex)
-		if p.V.IsNull() {
+		page := r.Page(pageIndex)
+		if page.V.IsNull() {
 			continue
 		}
 
-		text, err := p.GetPlainText(nil)
+		text, err := page.GetPlainText(nil)
 		if err != nil {
 			continue
 		}
@@ -82,12 +103,10 @@ func (p *Parser) ExtractTextFromBytes(data []byte) (string, error) {
 	return textBuilder.String(), nil
 }
 
-// CleanText removes extra whitespace and normalizes text
 func (p *Parser) CleanText(text string) string {
-	// Remove multiple spaces
+
 	text = strings.Join(strings.Fields(text), " ")
 
-	// Remove multiple newlines
 	lines := strings.Split(text, "\n")
 	var cleanedLines []string
 	for _, line := range lines {
