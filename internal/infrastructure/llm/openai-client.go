@@ -201,4 +201,32 @@ func (c *OpenAIClient) GenerateSummary(cvFeedback, projectFeedback string, cvMat
 	return resp.Choices[0].Message.Content, nil
 }
 
-// TODO: Add embedding functions once API compatibility is resolved
+// GenerateEmbeddings generates embeddings for a batch of texts
+func (c *OpenAIClient) GenerateEmbeddings(ctx context.Context, texts []string) ([][]float64, error) {
+	embeddings := make([][]float64, len(texts))
+
+	// Process one text at a time to avoid complex union type issues
+	for i, text := range texts {
+		resp, err := c.client.Embeddings.New(ctx, openai.EmbeddingNewParams{
+			Model: openai.EmbeddingModelTextEmbeddingAda002,
+			Input: openai.EmbeddingNewParamsInputUnion{
+				OfString: openai.String(text),
+			},
+		})
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate embedding for text %d: %w", i, err)
+		}
+
+		if len(resp.Data) == 0 {
+			return nil, fmt.Errorf("no embedding data returned for text %d", i)
+		}
+
+		embeddings[i] = resp.Data[0].Embedding
+
+		// Add small delay to avoid rate limits
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	return embeddings, nil
+}
