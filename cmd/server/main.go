@@ -76,7 +76,7 @@ func main() {
 
 	// Initialize services
 	docService := service.NewDocumentService(docRepo, uploadPath)
-	evalService := service.NewEvaluationService(evalRepo, rdb)
+	evalService := service.NewEvaluationService(evalRepo, docRepo, rdb)
 
 	// Initialize handlers
 	docHandler := handler.NewDocumentHandler(docService)
@@ -116,7 +116,7 @@ func main() {
 	
 	// Debug endpoint
 	r.GET("/debug/jobs", func(c *gin.Context) {
-		var jobs []map[string]interface{}
+		var jobs []map[string]any
 		err := db.Table("evaluation_jobs").Find(&jobs).Error
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
@@ -158,55 +158,16 @@ func main() {
 	}
 }
 
-// initDatabase initializes PostgreSQL connection with ZERO statement caching
+// initDatabase initializes PostgreSQL connection with proper settings
 func initDatabase() (*gorm.DB, error) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		return nil, fmt.Errorf("DATABASE_URL not set in environment")
 	}
 
-	// NUCLEAR OPTION: Completely disable ALL caching and force simple query mode
-	antiCacheParams := []string{
-		"statement_cache_mode=disabled",
-		"prepared_statement_cache_size=0", 
-		"statement_cache_capacity=0",
-		"binary_parameters=no",
-		"prefer_simple_protocol=true",
-		"default_query_exec_mode=simple_protocol",  // Force simple protocol mode
-		"pool_max_conn_lifetime=1m",
-		"pool_max_conn_idle_time=30s",
-	}
-
-	// Strip existing similar parameters and add ours
-	for _, param := range antiCacheParams {
-		paramKey := strings.Split(param, "=")[0]
-		// Remove existing parameter if present
-		if strings.Contains(dsn, paramKey) {
-			parts := strings.Split(dsn, "&")
-			var cleanParts []string
-			for _, part := range parts {
-				if !strings.Contains(part, paramKey) {
-					cleanParts = append(cleanParts, part)
-				}
-			}
-			dsn = strings.Join(cleanParts, "&")
-		}
-		
-		// Add our parameter
-		separator := "?"
-		if strings.Contains(dsn, "?") {
-			separator = "&"
-		}
-		dsn += separator + param
-	}
-
-	fmt.Printf("🔥 NUCLEAR ANTI-CACHE MODE ACTIVATED\n")
-	fmt.Printf("🔗 DSN: %s\n", dsn)
-
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger:        logger.Default.LogMode(logger.Silent),
-		PrepareStmt:   false,  // ABSOLUTELY NO prepared statements
-		SkipDefaultTransaction: true,  // Skip transactions to avoid statement caching
+		PrepareStmt:   true,  // Enable prepared statements for better performance
 		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
@@ -219,19 +180,17 @@ func initDatabase() (*gorm.DB, error) {
 		return nil, err
 	}
 
-	// MINIMAL connection pooling to avoid reuse
-	sqlDB.SetMaxIdleConns(1)           // Only 1 idle connection
-	sqlDB.SetMaxOpenConns(3)           // Only 3 total connections  
-	sqlDB.SetConnMaxLifetime(1 * time.Minute)  // Very short lifetime
-	sqlDB.SetConnMaxIdleTime(10 * time.Second)  // Very short idle time
+	// Reasonable connection pooling settings
+	sqlDB.SetMaxIdleConns(10)                   // 10 idle connections
+	sqlDB.SetMaxOpenConns(25)                   // 25 max open connections  
+	sqlDB.SetConnMaxLifetime(30 * time.Minute)  // 30 minute connection lifetime
+	sqlDB.SetConnMaxIdleTime(5 * time.Minute)   // 5 minute idle timeout
 	
-	// Force clean connections
+	// Test connection
 	ctx := context.Background()
 	if err := sqlDB.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("ping failed: %w", err)
 	}
-
-	fmt.Printf("💀 ANTI-CACHE SETTINGS: MaxOpen=3, MaxIdle=1, Lifetime=1m\n")
 
 	return db, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,7 +20,7 @@ type EvaluationWorker struct {
 	redis          *redis.Client
 	evalRepo       *repository.EvaluationRepository
 	docRepo        *repository.DocumentRepository
-	llmClient      *llm.OpenAIClient
+	llmClient      *llm.OpenAIService
 	contextService *service.ContextService
 	pdfParser      *pdf.Parser
 }
@@ -28,7 +29,7 @@ func NewEvaluationWorker(
 	redis *redis.Client,
 	evalRepo *repository.EvaluationRepository,
 	docRepo *repository.DocumentRepository,
-	llmClient *llm.OpenAIClient,
+	llmClient *llm.OpenAIService,
 	contextService *service.ContextService,
 ) *EvaluationWorker {
 	return &EvaluationWorker{
@@ -93,8 +94,14 @@ func (w *EvaluationWorker) processJob(ctx context.Context, jobID string) error {
 		return fmt.Errorf("failed to update status: %w", err)
 	}
 
+	// Convert string jobID to uint
+	jobIDUint, err := strconv.ParseUint(jobID, 10, 32)
+	if err != nil {
+		return fmt.Errorf("invalid job ID format: %w", err)
+	}
+
 	// Get job details
-	job, err := w.evalRepo.GetByID(jobID)
+	job, err := w.evalRepo.GetByID(uint(jobIDUint))
 	if err != nil {
 		return fmt.Errorf("failed to get job: %w", err)
 	}

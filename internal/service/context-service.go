@@ -9,10 +9,10 @@ import (
 
 type ContextService struct {
 	qdrant    *vectordb.QdrantClient
-	llmClient *llm.OpenAIClient
+	llmClient *llm.OpenAIService
 }
 
-func NewContextService(qdrant *vectordb.QdrantClient, llmClient *llm.OpenAIClient) *ContextService {
+func NewContextService(qdrant *vectordb.QdrantClient, llmClient *llm.OpenAIService) *ContextService {
 	return &ContextService{
 		qdrant:    qdrant,
 		llmClient: llmClient,

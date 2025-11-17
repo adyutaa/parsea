@@ -8,7 +8,6 @@ import (
 
 	"github.com/adyutaa/parsea/internal/infrastructure/llm"
 	"github.com/adyutaa/parsea/internal/infrastructure/vectordb"
-	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 )
 
@@ -224,7 +223,7 @@ Key Areas for Assessment:
 
 	fmt.Println("\n📝 Preparing documents...")
 	for i, doc := range documents {
-		docID := uuid.New().String()
+		docID := fmt.Sprintf("doc_%d", i+1)
 
 		allDocs = append(allDocs, vectordb.Document{
 			ID:   docID,

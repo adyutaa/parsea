@@ -2,8 +2,11 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
+	
 	"github.com/adyutaa/parsea/internal/service"
-
+	"github.com/adyutaa/parsea/internal/validation"
 	"github.com/gin-gonic/gin"
 )
 
@@ -17,8 +20,8 @@ func NewEvaluationHandler(service *service.EvaluationService) *EvaluationHandler
 
 // EvaluateRequest represents the request body for evaluation
 type EvaluateRequest struct {
-	CVID     string `json:"cv_id" binding:"required"`
-	ReportID string `json:"report_id" binding:"required"`
+	CVID     uint   `json:"cv_id" binding:"required"`
+	ReportID uint   `json:"report_id" binding:"required"`
 	JobTitle string `json:"job_title" binding:"required"`
 }
 
@@ -27,13 +30,42 @@ func (h *EvaluationHandler) Evaluate(c *gin.Context) {
 	var req EvaluateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request: " + err.Error(),
+			"error": "Invalid JSON format: " + err.Error(),
+		})
+		return
+	}
+
+	// Validate CV ID (basic validation - ensure it's not zero)
+	if req.CVID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "cv_id must be a positive integer",
+		})
+		return
+	}
+
+	// Validate Report ID (basic validation - ensure it's not zero)
+	if req.ReportID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "report_id must be a positive integer",
+		})
+		return
+	}
+
+	// Validate and sanitize job title
+	req.JobTitle = strings.TrimSpace(req.JobTitle)
+	if err := validation.ValidateJobTitle(req.JobTitle); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
 		})
 		return
 	}
 
 	// Start evaluation
-	jobID, err := h.service.StartEvaluation(req.CVID, req.ReportID, req.JobTitle)
+	jobID, err := h.service.StartEvaluation(
+		strconv.FormatUint(uint64(req.CVID), 10), 
+		strconv.FormatUint(uint64(req.ReportID), 10), 
+		req.JobTitle,
+	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to start evaluation: " + err.Error(),
@@ -41,8 +73,10 @@ func (h *EvaluationHandler) Evaluate(c *gin.Context) {
 		return
 	}
 
+	// Convert jobID string back to int for response
+	jobIDInt, _ := strconv.Atoi(jobID)
 	c.JSON(http.StatusOK, gin.H{
-		"id":     jobID,
+		"id":     jobIDInt,
 		"status": "queued",
 	})
 }
@@ -51,9 +85,11 @@ func (h *EvaluationHandler) Evaluate(c *gin.Context) {
 func (h *EvaluationHandler) GetResult(c *gin.Context) {
 	jobID := c.Query("id")
 
-	if jobID == "" {
+	// Validate job ID format
+	if err := validation.ValidateID(jobID, "id"); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Job ID is required as query parameter: ?id=your-job-id",
+			"error": err.Error(),
+			"hint": "Job ID must be a valid positive integer. Example: ?id=123",
 		})
 		return
 	}

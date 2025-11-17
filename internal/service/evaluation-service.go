@@ -3,71 +3,91 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/adyutaa/parsea/internal/domain"
 	"github.com/adyutaa/parsea/internal/repository"
-	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9" // ← Update ini
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 type EvaluationService struct {
-	repo  *repository.EvaluationRepository
-	redis *redis.Client
+	repo    *repository.EvaluationRepository
+	docRepo *repository.DocumentRepository
+	redis   *redis.Client
 }
 
-func NewEvaluationService(repo *repository.EvaluationRepository, redis *redis.Client) *EvaluationService {
+func NewEvaluationService(repo *repository.EvaluationRepository, docRepo *repository.DocumentRepository, redis *redis.Client) *EvaluationService {
 	return &EvaluationService{
-		repo:  repo,
-		redis: redis,
+		repo:    repo,
+		docRepo: docRepo,
+		redis:   redis,
 	}
 }
 
-// StartEvaluation creates a new evaluation job and queues it
 func (s *EvaluationService) StartEvaluation(cvID, reportID, jobTitle string) (string, error) {
-	// Create job
+	// Convert string IDs to uint
+	cvIDUint, err := strconv.ParseUint(cvID, 10, 32)
+	if err != nil {
+		return "", fmt.Errorf("invalid CV ID format: %w", err)
+	}
+
+	reportIDUint, err := strconv.ParseUint(reportID, 10, 32)
+	if err != nil {
+		return "", fmt.Errorf("invalid Report ID format: %w", err)
+	}
+
+	if _, err := s.docRepo.GetByID(uint(cvIDUint)); err != nil {
+		return "", fmt.Errorf("CV document not found: %w", err)
+	}
+
+	if _, err := s.docRepo.GetByID(uint(reportIDUint)); err != nil {
+		return "", fmt.Errorf("report document not found: %w", err)
+	}
+
 	job := &domain.EvaluationJob{
-		ID:        uuid.New().String(),
-		CVID:      cvID,
-		ReportID:  reportID,
+		CVID:      uint(cvIDUint),
+		ReportID:  uint(reportIDUint),
 		JobTitle:  jobTitle,
 		Status:    "queued",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
-	// Save to database
 	if err := s.repo.Create(job); err != nil {
 		return "", fmt.Errorf("failed to create job: %w", err)
 	}
 
-	// Push to Redis queue
+	// PUSH REDIS queue
 	ctx := context.Background()
-	if err := s.redis.LPush(ctx, "evaluation_queue", job.ID).Err(); err != nil {
-		// If Redis fails, mark job as failed in DB
-		s.repo.UpdateError(job.ID, "failed to queue job")
+	jobIDStr := strconv.FormatUint(uint64(job.ID), 10)
+	if err := s.redis.LPush(ctx, "evaluation_queue", jobIDStr).Err(); err != nil {
+		s.repo.UpdateError(jobIDStr, "failed to queue job")
 		return "", fmt.Errorf("failed to queue job: %w", err)
 	}
 
-	return job.ID, nil
+	return jobIDStr, nil
 }
 
-// GetJobStatus retrieves the status of an evaluation job
 func (s *EvaluationService) GetJobStatus(id string) (*domain.EvaluationJob, error) {
-	job, err := s.repo.GetByID(id)
+	// Convert string ID to uint
+	idUint, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid job ID format: %w", err)
+	}
+
+	job, err := s.repo.GetByID(uint(idUint))
 	if err != nil {
 		return nil, fmt.Errorf("job not found: %w", err)
 	}
 	return job, nil
 }
 
-// GetDB returns the database connection for debugging
 func (s *EvaluationService) GetDB() *gorm.DB {
 	return s.repo.GetDB()
 }
 
-// GetQueueLength returns the number of jobs in the queue
 func (s *EvaluationService) GetQueueLength() (int64, error) {
 	ctx := context.Background()
 	length, err := s.redis.LLen(ctx, "evaluation_queue").Result()

@@ -7,7 +7,7 @@ import (
 )
 
 type Document struct {
-	ID         string    `json:"id" gorm:"primaryKey;type:uuid"`
+	ID         uint      `json:"id" gorm:"primaryKey;autoIncrement"`
 	Filename   string    `json:"filename" gorm:"not null"`
 	FilePath   string    `json:"file_path" gorm:"not null"`
 	DocType    string    `json:"doc_type" gorm:"not null"`
@@ -48,9 +48,9 @@ func (j *JSON) Scan(value interface{}) error {
 }
 
 type EvaluationJob struct {
-	ID           string    `json:"id" gorm:"primaryKey;type:uuid"`
-	CVID         string    `json:"cv_id" gorm:"type:uuid;not null"`
-	ReportID     string    `json:"report_id" gorm:"type:uuid;not null"`
+	ID           uint      `json:"id" gorm:"primaryKey;autoIncrement"`
+	CVID         uint      `json:"cv_id" gorm:"not null"`
+	ReportID     uint      `json:"report_id" gorm:"not null"`
 	JobTitle     string    `json:"job_title" gorm:"not null"`
 	Status       string    `json:"status" gorm:"default:'queued'"` // queued, processing, completed, failed
 	Result       JSON      `json:"result,omitempty" gorm:"type:jsonb"`

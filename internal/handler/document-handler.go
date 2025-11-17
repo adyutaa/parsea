@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"mime/multipart"
 	"net/http"
+	
 	"github.com/adyutaa/parsea/internal/service"
-
+	"github.com/adyutaa/parsea/internal/validation"
 	"github.com/gin-gonic/gin"
 )
 
@@ -26,11 +28,27 @@ func (h *DocumentHandler) Upload(c *gin.Context) {
 		return
 	}
 
+	// Validate CV file
+	if err := h.validateFile(cvFile); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "CV validation failed: " + err.Error(),
+		})
+		return
+	}
+
 	// Get Project Report file
 	reportFile, err := c.FormFile("project_report")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Project report file is required",
+		})
+		return
+	}
+
+	// Validate Project Report file
+	if err := h.validateFile(reportFile); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Project report validation failed: " + err.Error(),
 		})
 		return
 	}
@@ -58,4 +76,24 @@ func (h *DocumentHandler) Upload(c *gin.Context) {
 		"report_id": reportID,
 		"message":   "Files uploaded successfully",
 	})
+}
+
+// validateFile performs comprehensive file validation
+func (h *DocumentHandler) validateFile(file *multipart.FileHeader) error {
+	// Validate filename
+	if err := validation.ValidateFilename(file.Filename); err != nil {
+		return err
+	}
+
+	// Validate file size
+	if err := validation.ValidateFileSize(file.Size); err != nil {
+		return err
+	}
+
+	// Validate MIME type
+	if err := validation.ValidateMimeType(file.Header.Get("Content-Type")); err != nil {
+		return err
+	}
+
+	return nil
 }

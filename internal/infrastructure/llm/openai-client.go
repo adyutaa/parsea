@@ -8,34 +8,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/adyutaa/parsea/internal/domain"
 	"github.com/openai/openai-go"
 )
 
-type OpenAIClient struct {
+type OpenAIService struct {
 	client *openai.Client
 }
 
-func NewOpenAIClient(apiKey string) *OpenAIClient {
+func NewOpenAIClient(apiKey string) *OpenAIService {
 	client := openai.NewClient()
-	return &OpenAIClient{
+	return &OpenAIService{
 		client: &client,
 	}
 }
 
-// CVEvaluationResult represents the structured output for CV evaluation
-type CVEvaluationResult struct {
-	MatchRate float64 `json:"match_rate"`
-	Feedback  string  `json:"feedback"`
-}
-
-// ProjectEvaluationResult represents the structured output for project evaluation
-type ProjectEvaluationResult struct {
-	Score    float64 `json:"score"`
-	Feedback string  `json:"feedback"`
-}
-
-// EvaluateCV evaluates a candidate's CV against job requirements
-func (c *OpenAIClient) EvaluateCV(cvText, jobContext string) (*CVEvaluationResult, error) {
+func (c *OpenAIService) EvaluateCV(cvText, jobContext string) (*domain.CVEvaluationResult, error) {
 	prompt := fmt.Sprintf(`You are an expert technical recruiter. Analyze this candidate's CV for a Backend Engineer role and respond with specific, personalized feedback.
 
 JOB REQUIREMENTS:
@@ -83,19 +71,17 @@ CRITICAL: Write actual specific feedback about THIS candidate, not generic place
 	content := resp.Choices[0].Message.Content
 	log.Printf("🔍 OpenAI CV Response: %s", content)
 
-	var result CVEvaluationResult
+	var result domain.CVEvaluationResult
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
 		return nil, fmt.Errorf("failed to parse OpenAI response: %w, content: %s", err, content)
 	}
 
-	// Check for placeholder text that suggests the model didn't follow instructions
 	if strings.Contains(result.Feedback, "Your detailed feedback here") ||
-	   strings.Contains(result.Feedback, "Provide your actual") ||
-	   strings.Contains(result.Feedback, "placeholder") {
+		strings.Contains(result.Feedback, "Provide your actual") ||
+		strings.Contains(result.Feedback, "placeholder") {
 		return nil, fmt.Errorf("OpenAI returned placeholder text instead of actual feedback. Content: %s", content)
 	}
 
-	// Validate match_rate range
 	if result.MatchRate < 0 {
 		result.MatchRate = 0
 	}
@@ -106,8 +92,7 @@ CRITICAL: Write actual specific feedback about THIS candidate, not generic place
 	return &result, nil
 }
 
-// EvaluateProject evaluates a candidate's project report
-func (c *OpenAIClient) EvaluateProject(reportText, caseStudyContext string) (*ProjectEvaluationResult, error) {
+func (c *OpenAIService) EvaluateProject(reportText, caseStudyContext string) (*domain.ProjectEvaluationResult, error) {
 	prompt := fmt.Sprintf(`You are an expert technical evaluator assessing a candidate's project submission.
 
 Case Study Requirements and Rubric:
@@ -153,12 +138,11 @@ IMPORTANT:
 
 	content := resp.Choices[0].Message.Content
 
-	var result ProjectEvaluationResult
+	var result domain.ProjectEvaluationResult
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
 		return nil, fmt.Errorf("failed to parse OpenAI response: %w, content: %s", err, content)
 	}
 
-	// Validate score range
 	if result.Score < 1 {
 		result.Score = 1
 	}
@@ -169,8 +153,7 @@ IMPORTANT:
 	return &result, nil
 }
 
-// GenerateSummary creates a final summary from CV and project evaluations
-func (c *OpenAIClient) GenerateSummary(cvFeedback, projectFeedback string, cvMatchRate, projectScore float64) (string, error) {
+func (c *OpenAIService) GenerateSummary(cvFeedback, projectFeedback string, cvMatchRate, projectScore float64) (string, error) {
 	prompt := fmt.Sprintf(`You are an expert hiring manager making a final recommendation.
 
 			CV Evaluation:
@@ -212,11 +195,9 @@ func (c *OpenAIClient) GenerateSummary(cvFeedback, projectFeedback string, cvMat
 	return resp.Choices[0].Message.Content, nil
 }
 
-// GenerateEmbeddings generates embeddings for a batch of texts
-func (c *OpenAIClient) GenerateEmbeddings(ctx context.Context, texts []string) ([][]float64, error) {
+func (c *OpenAIService) GenerateEmbeddings(ctx context.Context, texts []string) ([][]float64, error) {
 	embeddings := make([][]float64, len(texts))
 
-	// Process one text at a time to avoid complex union type issues
 	for i, text := range texts {
 		resp, err := c.client.Embeddings.New(ctx, openai.EmbeddingNewParams{
 			Model: openai.EmbeddingModelTextEmbeddingAda002,
@@ -235,7 +216,6 @@ func (c *OpenAIClient) GenerateEmbeddings(ctx context.Context, texts []string) (
 
 		embeddings[i] = resp.Data[0].Embedding
 
-		// Add small delay to avoid rate limits
 		time.Sleep(200 * time.Millisecond)
 	}
 
