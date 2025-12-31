@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	
+
 	"github.com/adyutaa/parsea/internal/service"
 	"github.com/adyutaa/parsea/internal/validation"
 	"github.com/gin-gonic/gin"
@@ -62,8 +62,8 @@ func (h *EvaluationHandler) Evaluate(c *gin.Context) {
 
 	// Start evaluation
 	jobID, err := h.service.StartEvaluation(
-		strconv.FormatUint(uint64(req.CVID), 10), 
-		strconv.FormatUint(uint64(req.ReportID), 10), 
+		strconv.FormatUint(uint64(req.CVID), 10),
+		strconv.FormatUint(uint64(req.ReportID), 10),
 		req.JobTitle,
 	)
 	if err != nil {
@@ -89,7 +89,7 @@ func (h *EvaluationHandler) GetResult(c *gin.Context) {
 	if err := validation.ValidateID(jobID, "id"); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),
-			"hint": "Job ID must be a valid positive integer. Example: ?id=123",
+			"hint":  "Job ID must be a valid positive integer. Example: ?id=123",
 		})
 		return
 	}
@@ -97,17 +97,18 @@ func (h *EvaluationHandler) GetResult(c *gin.Context) {
 	job, err := h.service.GetJobStatus(jobID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
-			"error": "Job not found",
-			"job_id": jobID,
+			"error":   "Job not found",
+			"job_id":  jobID,
 			"details": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"id": job.ID,
-		"status": job.Status,
-		"result": job.Result,
+		"id":         job.ID,
+		"job_title":  job.JobTitle,
+		"status":     job.Status,
+		"result":     job.Result,
 		"created_at": job.CreatedAt,
 		"updated_at": job.UpdatedAt,
 	})

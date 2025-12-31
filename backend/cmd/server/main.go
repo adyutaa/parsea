@@ -113,7 +113,7 @@ func main() {
 	r.POST("/evaluate", evalHandler.Evaluate)
 	r.GET("/result", evalHandler.GetResult)
 	r.GET("/queue/status", evalHandler.GetQueueStatus)
-	
+
 	// Debug endpoint
 	r.GET("/debug/jobs", func(c *gin.Context) {
 		var jobs []map[string]any
@@ -124,7 +124,7 @@ func main() {
 		}
 		c.JSON(200, gin.H{
 			"total_jobs": len(jobs),
-			"jobs": jobs,
+			"jobs":       jobs,
 		})
 	})
 
@@ -166,8 +166,8 @@ func initDatabase() (*gorm.DB, error) {
 	}
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger:        logger.Default.LogMode(logger.Silent),
-		PrepareStmt:   true,  // Enable prepared statements for better performance
+		Logger:                                   logger.Default.LogMode(logger.Silent),
+		PrepareStmt:                              true, // Enable prepared statements for better performance
 		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
@@ -181,11 +181,11 @@ func initDatabase() (*gorm.DB, error) {
 	}
 
 	// Reasonable connection pooling settings
-	sqlDB.SetMaxIdleConns(10)                   // 10 idle connections
-	sqlDB.SetMaxOpenConns(25)                   // 25 max open connections  
-	sqlDB.SetConnMaxLifetime(30 * time.Minute)  // 30 minute connection lifetime
-	sqlDB.SetConnMaxIdleTime(5 * time.Minute)   // 5 minute idle timeout
-	
+	sqlDB.SetMaxIdleConns(10)                  // 10 idle connections
+	sqlDB.SetMaxOpenConns(25)                  // 25 max open connections
+	sqlDB.SetConnMaxLifetime(30 * time.Minute) // 30 minute connection lifetime
+	sqlDB.SetConnMaxIdleTime(5 * time.Minute)  // 5 minute idle timeout
+
 	// Test connection
 	ctx := context.Background()
 	if err := sqlDB.PingContext(ctx); err != nil {
